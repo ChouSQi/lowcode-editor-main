@@ -1,73 +1,163 @@
-# React + TypeScript + Vite
+# React实现低代码编辑器
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+---
 
-Currently, two official plugins are available:
+### React + TypeScript + Vite + zustand + antd + TailWindCss
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+react-dnd拖拽组件 ， Allotment的pane实现窗口大小的拖拽
 
-## React Compiler
+---
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+### react19和andv5冲突
 
-## Expanding the ESLint configuration
+`bash
+npm install @ant-design/v5-patch-for-react-19 --save
+`
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+`
+import '@ant-design/v5-patch-for-react-19';
+`
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+---
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
+### hover高光
 
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+通过种一个data-component-id = id来标记所有的材料
+对画布监听鼠标Over,从e的事件冒泡路径取最底层拥有种子的div出来
+把ID保存在一个状态里，从而随时处理最新的hover的组件
+getBoundingClientRect拿到top，left,width,height这些边界属性
+用一个Mask组件，给它高光
+使用createPortal挂载，避免了其他样式的影响，比如overhidden,不会发生裁剪，重渲染的部分也更少
+z-index让高亮组件在上面
+注意还要设置 pointer-event 为 none，不响应鼠标事件。
+优化性能，
+使用 createPortal 是为了：
+主要原因应该是：我们需要把高亮效果的DOM元素插入到画布的特定位置（视觉上覆盖组件），但不想让这个元素受React组件层级关系的约束
+附带好处：
+✅ 不会影响数据流和整个逻辑结构
+✅ 确保高亮效果不会被意外裁剪
+✅ 更可靠的层级管理
+✅ 更精确的位置计算（特别是处理滚动时）
+✅ 更好的性能（减少不必要的重渲染）
+
+- 物理位置需求
+
+高亮必须覆盖在所有用户组件之上（需要挂载到画布容器）
+
+但高亮组件在逻辑上属于工具栏/画布控制器（不应该影响用户组件树）
+
+- 规避层级污染
+
+用户组件可能有 z-index: 9999 这样的"暴力"设置
+
+Portal 可以确保高亮永远在最顶层（直接挂载到画布根容器）
+
+- 代码组织合理性
+
+高亮的逻辑（计算位置、显示条件）应该属于控制层代码
+
+高亮的渲染需要侵入到画布视图层
+
+### click的时候展示编辑框和属性设置
+
+click 选中的组件除了展示编辑框，还要在右侧属性区展示对应的组件属性
+所以有两个部分，都要用到click到哪儿了，所以需要用一个全局store的来保存信息比较好
+click事件还是在画布做比较好，不然每个组件都要写加一个事件监听，为了通用性，还是画布
+监听点击以后还是事件冒泡找到种下的data-component-id,就可以锁定当前id和组件类型
+然后计算编辑框大小，也是用createPortal造一个Mask用来当编辑框
+属性设置就简单了，只需要从store里面获取信息就好了
+
+- 修复一个bug,更新组件树也必须更新所有mask的参数，不然的话，此时componentId没变，不更新，就会出现视觉上的bug
+- 一个没修复成功的bug，窗口resize的时候，无法及时更新mask的position
+
+### 属性编辑和样式编辑
+
+属性编辑是按照预设哪些可以编辑的设置器，也就是config中的setter来渲染给用户填写的表单
+也就是用户可以通过setter设定的字段，来在json的props中改变这些字段
+style的自定义编辑 注意防抖lodash做了防抖
+做一下**防抖**，核心就是，只有在500ms之后没有改变，我才回调进行真正的数据操作
+所以需要一个定时器容器，真正的回调都依靠这个定时器，如果500ms内发生了改变，那么就清除掉这个定时器
+最后呢，发现还有个问题，选择器和自定义这个，你自定义的地方修改了选择器的属性，或者反过来，都没法及时同步
+修一下，通过两个flag传值，只要对方的flag改变，那我就更新一下，这样两边css显示就可以同步了
+
+### 大纲和源码
+
+大纲就是根据json渲染一棵树，然后可以点击，点击的话就更改curComponent
+源码就是显示json,和amis一样，注意json用pre包裹就好
+
+### 预览
+
+编辑以后用户要预览自己的编辑好的页面
+因此预览的时候渲染的组件和编辑的时候有些许不一样
+编辑的时候可以drop,但是预览不用，编辑的时候要高光和显示编辑，预览的时候不用
+但是预览的时候要出发事件，编辑又不用
+因此根据mode处于编辑和预览，应该用不同版本的组件来渲染json，分成dev和prod版本的材料
+
+### 事件绑定
+
+配置中定义每个组件他可以接受的事件
+按照事件渲染出给用户点击或者输入的表单，然后可以选择事件的动作
+当用户选择这个事件对应的动作，就更新到json中
+选择了动作以后，根据动作，进一步渲染该动作匹配的一些属性，比如跳转应该让用户填url
+用户填了这些属性以后再更新json
+
+有了json的事件对应的操作，然后操作对应的一些属性以后，就可以在预览的时候给这些组件加上真正的事件逻辑
+已经有了Json,里面有onClick这样的事件在props里面，然后onClick这样的事件下面会有简单的操作类型type比如跳转，还有一些参数，比如说跳转，就还有url这样的参数在onclick下
+这样可以开始渲染预览组件，查找该组件配置里面配置的事件，比如有onclick,doubleclick,然后呢和实体json去对比
+此时发现，诶，有onclick，那就可以把onclick事件属性全部拿出来造一个参数，变成什么样子呢
+onClick：() => {} , 这样的话呢，就可以把onClick：()=>{} 这样一个键值对通过 创建组件的时候 传给组件
+组件的得到了回调函数的参数，然后把onClick这个回调安装在需要的地方，需要的时候你调用一下，提前写好，就行了
+
+
+这样我们就可以触发事件了，事件一般就是一些鼠标事件，或者值变化之类的，事件是比较少的，但是每个事件都对应很多动作
+比如onClick就可以对应很多的实际操作，所以动作要抽象出来，方便拓展
+
+添加一个弹窗来管理动作，方便一点，动作的参数改变了就回调传给弹窗，弹窗点添加的时候再改变json
+
+添加动作按钮和Collapse两个都会一起被点击，需要禁用事件冒泡
+
+### 自定义JS
+
+也是事件触发时候的动作，
+实现增删改查执行，增加进json ， 要提供修改，因为代码比较长相比于其他动作的参数
+修改主要是检测当前有没有一个要修改的动作的配置actionConfig,如果要改这个配置，就显示它，并且添加变成修改，如果不存在这个action，那就说明是添加，添加的话就设置为空弹窗，只要维护当前是否有一个要修改的action就好了
+查就是显示嘛，然后是执行，执行的话用new Function
+
+### 组件联动
+
+当你点击一个按钮的时候，我们可以修改另一个组件的，比如说让他隐藏
+我们知道，forwardRef + useImperativeHandle 可以让组件暴露一些方法出来
+我们在递归渲染组件 renderComponents 的时候，把组件 ref 收集起来，放到一个 map 里
+这样 id 为 111 的组件想调用 id 为 222 的组件的 ccc 方法，就只需要在动作里加一个配置
+
+```ts
+actions: [
+    {
+        type: 'componentMethod',
+        config: {
+            componentId: 222,
+            method: 'ccc'
+        }
+    }
+]
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+然后处理事件的时候，根据这个 componentId 和 method 从 refs 里拿到对应的方法执行就好了
+注意
+dev 时的组件和 prod 时的组件不一样，我们要加上 drop 的处理，，设置 drop 时的高亮，添加 data-compnent-id，并且指定最小高度，不用触发事件，也不需要暴露API
+关键,每个组件暴露出来的API要收集起来，大家暴露的都是Record<string , any>格式：
+`ref:(ref:Record<string , any>) => { componentRefs.current[component.id] = ref; }`
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+### 拖拽优化
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
+拖拽的一部分，主要是编辑区渲染出来的组件也可以拖拽，也就是dev组件加一个拖拽
+注意这里拖拽里面的dev组件，应该是move而不是新增
+还要注意有些组件，比如container,又可以drop又可以drag,要把ref提前暴露出来，用effct来初始化
+
+### Table组件
+
+col只是要取createelement的时候的属性，因此什么都不用写，我们利用属性，创造出columns数组，就可以渲染列名了
+数据用异步初始化的方法，用axios来请求
+日期用dayjs处理
+
+### 暂时完结，暂时不添加了，先吃透这些部分，已经实现了我想要的功能
